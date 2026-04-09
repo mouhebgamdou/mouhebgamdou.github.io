@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Binary Search — Mouheb Gamdou</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    .search-input-row {
+      display: flex; align-items: center; gap: 0.75rem;
+      padding: 0 2rem; max-width: 900px; margin: 0 auto 0.5rem;
+      flex-wrap: wrap;
+    }
+    .search-input-row label { color: var(--muted); font-size: 0.78rem; }
+    .search-input-row input[type=number] {
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); font-family: var(--mono); font-size: 0.82rem;
+      padding: 0.35rem 0.6rem; width: 80px; outline: none;
+    }
+    .search-input-row input[type=number]:focus { border-color: var(--accent); }
+    #boxes-container {
+      display: flex; flex-wrap: wrap; gap: 4px;
+    }
+    .box {
+      width: 46px; height: 46px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.78rem; font-weight: 700;
+      border: 1px solid var(--border); background: #0a0a0a;
+      transition: all 0.2s; position: relative;
+    }
+    .box.active   { border-color: var(--muted); color: var(--text); }
+    .box.mid      { border-color: var(--yellow); background: var(--yellow-dim); color: var(--yellow); box-shadow: 0 0 8px var(--yellow-dim); }
+    .box.found    { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); box-shadow: 0 0 8px var(--accent-border); }
+    .box.eliminated { opacity: 0.18; }
+    .box.low-marker::before, .box.high-marker::after {
+      position: absolute; bottom: -18px; font-size: 0.6rem; letter-spacing: 0.04em;
+    }
+    .box.low-marker::before  { content: "low";  color: var(--blue); left: 50%; transform: translateX(-50%); }
+    .box.high-marker::after  { content: "high"; color: var(--red);  left: 50%; transform: translateX(-50%); }
+    .box.mid-marker { }
+    .box.mid-marker::before { content: "mid"; position: absolute; bottom: -18px; font-size: 0.6rem; color: var(--yellow); left: 50%; transform: translateX(-50%); }
+    #step-log {
+      margin-top: 2rem;
+      border: 1px solid var(--border);
+      padding: 1rem;
+      font-size: 0.75rem;
+      color: var(--muted);
+      max-height: 140px;
+      overflow-y: auto;
+    }
+    #step-log .log-line { padding: 0.2rem 0; border-bottom: 1px solid var(--border); }
+    #step-log .log-line:last-child { border-bottom: none; color: var(--text); }
+    #step-log .log-line .hi { color: var(--accent); }
+    #step-log .log-line .warn { color: var(--yellow); }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a class="nav-back" href="../index.html">home</a>
+    <span class="nav-title">binary-search.html</span>
+  </nav>
+
+  <div class="page-header">
+    <h1>Binary <span>Search</span></h1>
+    <p>Efficiently finds a target value in a sorted array by repeatedly halving the search space. Requires the array to be sorted.</p>
+    <div class="complexity">
+      <div class="complexity-item">Time <span>O(log n)</span></div>
+      <div class="complexity-item">Space <span>O(1)</span></div>
+      <div class="complexity-item">Requirement <span>sorted array</span></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="btn-play">▶ search</button>
+    <button id="btn-reset">↺ reset</button>
+    <button id="btn-new">⟳ new array</button>
+    <span class="speed-label">speed</span>
+    <input type="range" id="speed" min="1" max="10" value="4" />
+  </div>
+
+  <div class="search-input-row">
+    <label>target value:</label>
+    <input type="number" id="target-input" min="1" max="99" value="42" />
+    <span style="color:var(--muted);font-size:0.72rem">(array range: 1–99)</span>
+  </div>
+
+  <div class="stats">
+    <div>steps: <span id="stat-steps">0</span></div>
+    <div>comparisons: <span id="stat-comparisons">0</span></div>
+    <div>status: <span id="stat-status">ready</span></div>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#0a0a0a;border:1px solid #333"></div> unsearched</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--yellow-dim);border:1px solid var(--yellow)"></div> mid</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--accent-dim);border:1px solid var(--accent)"></div> found</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#0a0a0a;border:1px solid #222;opacity:0.3"></div> eliminated</div>
+  </div>
+
+  <div class="viz">
+    <div id="boxes-container"></div>
+    <div id="step-log"><div class="log-line">// search log will appear here</div></div>
+  </div>
+
+  <script>
+    const N = 30;
+    let arr = [], boxStates = [], running = false, steps = 0, comparisons = 0;
+
+    const container   = document.getElementById('boxes-container');
+    const btnPlay     = document.getElementById('btn-play');
+    const btnReset    = document.getElementById('btn-reset');
+    const btnNew      = document.getElementById('btn-new');
+    const speedSlider = document.getElementById('speed');
+    const targetInput = document.getElementById('target-input');
+    const statSteps   = document.getElementById('stat-steps');
+    const statComp    = document.getElementById('stat-comparisons');
+    const statStatus  = document.getElementById('stat-status');
+    const log         = document.getElementById('step-log');
+
+    function getDelay() { return Math.round(1000 / parseInt(speedSlider.value)); }
+    function sleep(ms)  { return new Promise(r => setTimeout(r, ms)); }
+
+    function generateArray() {
+      const set = new Set();
+      while (set.size < N) set.add(Math.floor(Math.random() * 99) + 1);
+      arr = Array.from(set).sort((a, b) => a - b);
+      boxStates = new Array(N).fill('active');
+      steps = 0; comparisons = 0;
+      updateStats(); render(); clearLog();
+    }
+
+    function render(low = -1, high = -1, mid = -1) {
+      container.innerHTML = '';
+      arr.forEach((val, i) => {
+        const box = document.createElement('div');
+        let cls = boxStates[i];
+        if (i === mid)  cls = 'mid';
+        box.className = `box ${cls}`;
+        if (i === low  && i !== mid) box.classList.add('low-marker');
+        if (i === high && i !== mid) box.classList.add('high-marker');
+        if (i === mid)  box.classList.add('mid-marker');
+        box.textContent = val;
+        container.appendChild(box);
+      });
+    }
+
+    function updateStats() {
+      statSteps.textContent = steps;
+      statComp.textContent  = comparisons;
+    }
+
+    function clearLog() {
+      log.innerHTML = '<div class="log-line">// search log</div>';
+    }
+
+    function addLog(msg, type = '') {
+      const line = document.createElement('div');
+      line.className = 'log-line';
+      line.innerHTML = msg;
+      log.appendChild(line);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    async function binarySearch() {
+      running = true;
+      btnPlay.disabled = true;
+      statStatus.textContent = 'searching...';
+
+      const target = parseInt(targetInput.value);
+      let low = 0, high = arr.length - 1;
+      let found = false;
+
+      addLog(`searching for <span class="hi">${target}</span> in ${arr.length} elements`);
+
+      while (low <= high && running) {
+        steps++;
+        const mid = Math.floor((low + high) / 2);
+        comparisons++;
+        updateStats();
+
+        render(low, high, mid);
+        addLog(`step ${steps}: low=<span class="hi">${low}</span> high=<span class="hi">${high}</span> mid=<span class="warn">${mid}</span> → arr[mid]=<span class="warn">${arr[mid]}</span>`);
+        await sleep(getDelay());
+
+        if (arr[mid] === target) {
+          boxStates[mid] = 'found';
+          render(low, high, mid);
+          addLog(`✓ found <span class="hi">${target}</span> at index <span class="hi">${mid}</span>`);
+          statStatus.textContent = `found at index ${mid} ✓`;
+          found = true;
+          break;
+        } else if (arr[mid] < target) {
+          for (let i = low; i <= mid; i++) boxStates[i] = 'eliminated';
+          low = mid + 1;
+          addLog(`arr[mid] &lt; target → search right half`);
+        } else {
+          for (let i = mid; i <= high; i++) boxStates[i] = 'eliminated';
+          high = mid - 1;
+          addLog(`arr[mid] &gt; target → search left half`);
+        }
+
+        render(low, high, -1);
+        await sleep(getDelay() * 0.5);
+      }
+
+      if (!found && running) {
+        statStatus.textContent = 'not found ✗';
+        addLog(`✗ <span style="color:var(--red)">${target} not found</span> in array`);
+      }
+
+      running = false;
+      btnPlay.disabled = false;
+    }
+
+    btnPlay.addEventListener('click',  () => { if (!running) binarySearch(); });
+    btnReset.addEventListener('click', () => {
+      running = false; btnPlay.disabled = false;
+      statStatus.textContent = 'ready';
+      boxStates = new Array(N).fill('active');
+      steps = 0; comparisons = 0;
+      updateStats(); render(); clearLog();
+    });
+    btnNew.addEventListener('click', () => {
+      running = false; btnPlay.disabled = false;
+      statStatus.textContent = 'ready';
+      generateArray();
+    });
+
+    generateArray();
+  </script>
+</body>
+</html>

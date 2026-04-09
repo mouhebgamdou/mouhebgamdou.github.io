@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dijkstra's Algorithm — Mouheb Gamdou</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    canvas { display: block; background: #000; border: 1px solid var(--border); }
+    .node-select-row {
+      display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+      padding: 0 2rem; max-width: 900px; margin: 0 auto 0;
+    }
+    .node-select-row label { color: var(--muted); font-size: 0.78rem; }
+    select {
+      background: var(--surface); border: 1px solid var(--border);
+      color: var(--text); font-family: var(--mono); font-size: 0.78rem;
+      padding: 0.3rem 0.5rem; outline: none; cursor: pointer;
+    }
+    select:focus { border-color: var(--accent); }
+    #dist-table {
+      margin-top: 1.5rem;
+      display: flex; flex-wrap: wrap; gap: 4px;
+    }
+    .dist-cell {
+      border: 1px solid var(--border); padding: 0.35rem 0.6rem;
+      font-size: 0.72rem; min-width: 70px; text-align: center;
+      transition: all 0.3s;
+    }
+    .dist-cell .node-label { color: var(--accent); display: block; font-size: 0.65rem; margin-bottom: 0.1rem; }
+    .dist-cell .dist-val { color: var(--text); }
+    .dist-cell.updated { border-color: var(--accent); background: var(--accent-dim); }
+    .dist-cell.final { border-color: var(--accent); background: var(--accent-dim); }
+    #step-log {
+      margin-top: 1rem; border: 1px solid var(--border); padding: 0.75rem;
+      font-size: 0.72rem; color: var(--muted); max-height: 100px; overflow-y: auto;
+    }
+    .log-line { padding: 0.15rem 0; border-bottom: 1px solid var(--border); }
+    .log-line:last-child { border-bottom: none; color: var(--text); }
+    .hi { color: var(--accent); }
+    .warn { color: var(--yellow); }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a class="nav-back" href="../index.html">home</a>
+    <span class="nav-title">dijkstra.html</span>
+  </nav>
+
+  <div class="page-header">
+    <h1>Dijkstra's <span>Algorithm</span></h1>
+    <p>Finds the shortest path from a source node to all other nodes in a weighted graph. Uses a priority queue to always process the closest unvisited node next.</p>
+    <div class="complexity">
+      <div class="complexity-item">Time <span>O((V + E) log V)</span></div>
+      <div class="complexity-item">Space <span>O(V)</span></div>
+      <div class="complexity-item">Requirement <span>non-negative weights</span></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="btn-play">▶ run</button>
+    <button id="btn-pause" disabled>⏸ pause</button>
+    <button id="btn-reset">↺ reset</button>
+    <span class="speed-label">speed</span>
+    <input type="range" id="speed" min="1" max="10" value="4" />
+  </div>
+
+  <div class="node-select-row">
+    <label>start node:</label>
+    <select id="start-select"></select>
+    <label>end node:</label>
+    <select id="end-select"></select>
+  </div>
+
+  <div class="stats">
+    <div>visited: <span id="stat-visited">0</span></div>
+    <div>steps: <span id="stat-steps">0</span></div>
+    <div>status: <span id="stat-status">ready</span></div>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#1a1a1a;border:1px solid #333;border-radius:50%"></div> unvisited</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--yellow);border-radius:50%"></div> current</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#2255aa;border-radius:50%"></div> visited</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--accent);border-radius:50%"></div> shortest path</div>
+  </div>
+
+  <div class="viz">
+    <canvas id="canvas" width="860" height="360"></canvas>
+    <div id="dist-table"></div>
+    <div id="step-log"><div class="log-line">// algorithm log</div></div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx    = canvas.getContext('2d');
+
+    // Responsive canvas
+    function resizeCanvas() {
+      const w = Math.min(860, canvas.parentElement.clientWidth - 32);
+      canvas.style.width  = w + 'px';
+      canvas.style.height = Math.round(w * 360 / 860) + 'px';
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // Graph definition
+    const nodes = [
+      { id: 'A', x: 100, y: 180 },
+      { id: 'B', x: 240, y:  80 },
+      { id: 'C', x: 240, y: 280 },
+      { id: 'D', x: 400, y:  60 },
+      { id: 'E', x: 400, y: 180 },
+      { id: 'F', x: 400, y: 300 },
+      { id: 'G', x: 560, y:  80 },
+      { id: 'H', x: 560, y: 280 },
+      { id: 'I', x: 720, y: 180 },
+    ];
+
+    const edges = [
+      { from: 'A', to: 'B', w: 4 },
+      { from: 'A', to: 'C', w: 2 },
+      { from: 'B', to: 'D', w: 5 },
+      { from: 'B', to: 'E', w: 1 },
+      { from: 'C', to: 'E', w: 8 },
+      { from: 'C', to: 'F', w: 3 },
+      { from: 'D', to: 'G', w: 2 },
+      { from: 'E', to: 'G', w: 6 },
+      { from: 'E', to: 'H', w: 4 },
+      { from: 'F', to: 'H', w: 7 },
+      { from: 'G', to: 'I', w: 3 },
+      { from: 'H', to: 'I', w: 2 },
+      { from: 'D', to: 'E', w: 3 },
+    ];
+
+    // Build adjacency
+    function getNeighbors(id) {
+      const result = [];
+      edges.forEach(e => {
+        if (e.from === id) result.push({ node: e.to,   weight: e.w });
+        if (e.to   === id) result.push({ node: e.from, weight: e.w });
+      });
+      return result;
+    }
+
+    // State
+    let nodeStates = {}, pathEdges = new Set(), activeEdge = null;
+    let dist = {}, prev = {};
+    let running = false, paused = false, steps = 0, visited = 0;
+
+    const btnPlay    = document.getElementById('btn-play');
+    const btnPause   = document.getElementById('btn-pause');
+    const btnReset   = document.getElementById('btn-reset');
+    const speedSlider = document.getElementById('speed');
+    const startSel   = document.getElementById('start-select');
+    const endSel     = document.getElementById('end-select');
+    const statVisited = document.getElementById('stat-visited');
+    const statSteps  = document.getElementById('stat-steps');
+    const statStatus = document.getElementById('stat-status');
+    const distTable  = document.getElementById('dist-table');
+    const stepLog    = document.getElementById('step-log');
+
+    // Populate selects
+    nodes.forEach(n => {
+      const o1 = document.createElement('option'); o1.value = n.id; o1.textContent = n.id;
+      const o2 = document.createElement('option'); o2.value = n.id; o2.textContent = n.id;
+      startSel.appendChild(o1); endSel.appendChild(o2);
+    });
+    endSel.value = 'I';
+
+    function getDelay() { return Math.round(900 / parseInt(speedSlider.value)); }
+    function sleep(ms)  { return new Promise(r => setTimeout(r, ms)); }
+    async function waitIfPaused() { while (paused) await sleep(50); }
+
+    function resetState() {
+      nodeStates = {};
+      nodes.forEach(n => nodeStates[n.id] = 'unvisited');
+      pathEdges.clear(); activeEdge = null;
+      dist = {}; prev = {};
+      nodes.forEach(n => { dist[n.id] = Infinity; prev[n.id] = null; });
+      steps = 0; visited = 0;
+      statVisited.textContent = 0; statSteps.textContent = 0;
+      statStatus.textContent = 'ready';
+      clearLog(); updateDistTable(); draw();
+    }
+
+    function clearLog() {
+      stepLog.innerHTML = '<div class="log-line">// algorithm log</div>';
+    }
+
+    function addLog(msg) {
+      const line = document.createElement('div');
+      line.className = 'log-line'; line.innerHTML = msg;
+      stepLog.appendChild(line);
+      stepLog.scrollTop = stepLog.scrollHeight;
+    }
+
+    function updateDistTable() {
+      distTable.innerHTML = '';
+      nodes.forEach(n => {
+        const cell = document.createElement('div');
+        cell.className = 'dist-cell';
+        cell.id = `dist-${n.id}`;
+        cell.innerHTML = `<span class="node-label">${n.id}</span><span class="dist-val">${dist[n.id] === Infinity ? '∞' : dist[n.id]}</span>`;
+        if (nodeStates[n.id] === 'path') cell.classList.add('final');
+        distTable.appendChild(cell);
+      });
+    }
+
+    function flashDist(id) {
+      const cell = document.getElementById(`dist-${id}`);
+      if (!cell) return;
+      cell.classList.add('updated');
+      setTimeout(() => cell.classList.remove('updated'), 400);
+      cell.querySelector('.dist-val').textContent = dist[id] === Infinity ? '∞' : dist[id];
+    }
+
+    function nodePos(id) { return nodes.find(n => n.id === id); }
+
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Draw edges
+      edges.forEach(e => {
+        const a = nodePos(e.from), b = nodePos(e.to);
+        const key1 = `${e.from}-${e.to}`, key2 = `${e.to}-${e.from}`;
+        const isPath   = pathEdges.has(key1) || pathEdges.has(key2);
+        const isActive = activeEdge && (activeEdge === key1 || activeEdge === key2);
+
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+        ctx.lineWidth   = isPath ? 3 : 1;
+        ctx.strokeStyle = isPath ? '#00ff88' : isActive ? '#ffd700' : '#222';
+        ctx.stroke();
+
+        // Weight label
+        const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+        ctx.fillStyle = isPath ? '#00ff88' : isActive ? '#ffd700' : '#444';
+        ctx.font = '11px SF Mono, Fira Code, monospace';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(e.w, mx, my - 8);
+      });
+
+      // Draw nodes
+      nodes.forEach(n => {
+        const state = nodeStates[n.id];
+        let fill = '#0f0f0f', stroke = '#333', textColor = '#555';
+
+        if (state === 'current') { fill = '#332200'; stroke = '#ffd700'; textColor = '#ffd700'; }
+        else if (state === 'visited') { fill = '#0a1a33'; stroke = '#2255aa'; textColor = '#4488cc'; }
+        else if (state === 'path') { fill = '#001a0f'; stroke = '#00ff88'; textColor = '#00ff88'; }
+
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, 22, 0, Math.PI * 2);
+        ctx.fillStyle = fill; ctx.fill();
+        ctx.lineWidth = 2; ctx.strokeStyle = stroke; ctx.stroke();
+
+        ctx.fillStyle = textColor;
+        ctx.font = 'bold 13px SF Mono, Fira Code, monospace';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(n.id, n.x, n.y);
+
+        // Distance label
+        const d = dist[n.id];
+        ctx.fillStyle = state === 'path' ? '#00ff88' : '#555';
+        ctx.font = '10px SF Mono, Fira Code, monospace';
+        ctx.fillText(d === Infinity ? '∞' : d, n.x, n.y + 34);
+      });
+    }
+
+    function tracePath(endId) {
+      let cur = endId;
+      while (cur !== null) {
+        nodeStates[cur] = 'path';
+        if (prev[cur] !== null) {
+          pathEdges.add(`${prev[cur]}-${cur}`);
+          pathEdges.add(`${cur}-${prev[cur]}`);
+        }
+        cur = prev[cur];
+      }
+    }
+
+    async function dijkstra() {
+      running = true; paused = false;
+      btnPlay.disabled = true; btnPause.disabled = false;
+      statStatus.textContent = 'running...';
+
+      const startId = startSel.value;
+      const endId   = endSel.value;
+
+      dist[startId] = 0;
+      updateDistTable(); draw();
+      addLog(`start: <span class="hi">${startId}</span> → target: <span class="hi">${endId}</span>`);
+
+      const pq = [{ id: startId, d: 0 }];
+      const visitedSet = new Set();
+
+      while (pq.length > 0 && running) {
+        await waitIfPaused();
+
+        pq.sort((a, b) => a.d - b.d);
+        const { id: cur } = pq.shift();
+        if (visitedSet.has(cur)) continue;
+        visitedSet.add(cur);
+
+        steps++; visited++;
+        statSteps.textContent = steps;
+        statVisited.textContent = visited;
+
+        nodeStates[cur] = 'current';
+        draw();
+        addLog(`visiting <span class="warn">${cur}</span> — dist: <span class="hi">${dist[cur]}</span>`);
+        await sleep(getDelay());
+
+        if (cur === endId) break;
+
+        const neighbors = getNeighbors(cur);
+        for (const { node: nb, weight } of neighbors) {
+          if (visitedSet.has(nb) || !running) continue;
+
+          activeEdge = `${cur}-${nb}`;
+          draw();
+          await sleep(getDelay() * 0.4);
+
+          const newDist = dist[cur] + weight;
+          if (newDist < dist[nb]) {
+            dist[nb] = newDist;
+            prev[nb] = cur;
+            pq.push({ id: nb, d: newDist });
+            flashDist(nb);
+            addLog(`  relax ${cur}→<span class="hi">${nb}</span>: dist=<span class="hi">${newDist}</span>`);
+          }
+          activeEdge = null;
+        }
+
+        nodeStates[cur] = 'visited';
+        draw(); updateDistTable();
+        await sleep(getDelay() * 0.3);
+      }
+
+      if (running) {
+        tracePath(endId);
+        draw(); updateDistTable();
+        const d = dist[endId];
+        if (d === Infinity) {
+          addLog(`✗ no path from ${startId} to ${endId}`);
+          statStatus.textContent = 'no path found';
+        } else {
+          const path = [];
+          let cur = endId;
+          while (cur) { path.unshift(cur); cur = prev[cur]; }
+          addLog(`✓ shortest path: <span class="hi">${path.join(' → ')}</span> (cost: <span class="hi">${d}</span>)`);
+          statStatus.textContent = `done — cost: ${d} ✓`;
+        }
+      }
+
+      running = false; paused = false;
+      btnPlay.disabled = false; btnPause.disabled = true;
+    }
+
+    btnPlay.addEventListener('click', () => { if (!running) dijkstra(); });
+    btnPause.addEventListener('click', () => {
+      paused = !paused;
+      btnPause.textContent = paused ? '▶ resume' : '⏸ pause';
+      statStatus.textContent = paused ? 'paused' : 'running...';
+    });
+    btnReset.addEventListener('click', () => {
+      running = false; paused = false;
+      btnPlay.disabled = false; btnPause.disabled = true;
+      btnPause.textContent = '⏸ pause';
+      resetState();
+    });
+
+    resetState();
+  </script>
+</body>
+</html>

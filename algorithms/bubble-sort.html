@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bubble Sort — Mouheb Gamdou</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    #bars-container {
+      display: flex;
+      align-items: flex-end;
+      gap: 3px;
+      height: 280px;
+      padding: 1rem 0;
+    }
+    .bar {
+      flex: 1;
+      border-radius: 1px 1px 0 0;
+      transition: height 0.1s ease;
+      position: relative;
+      min-width: 4px;
+    }
+    .bar.default  { background: #2a2a2a; border: 1px solid #333; }
+    .bar.comparing { background: var(--yellow); border-color: var(--yellow); box-shadow: 0 0 6px var(--yellow); }
+    .bar.swapping  { background: var(--red);    border-color: var(--red);    box-shadow: 0 0 6px var(--red); }
+    .bar.sorted    { background: var(--accent); border-color: var(--accent); }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a class="nav-back" href="../index.html">home</a>
+    <span class="nav-title">bubble-sort.html</span>
+  </nav>
+
+  <div class="page-header">
+    <h1>Bubble <span>Sort</span></h1>
+    <p>Repeatedly steps through the list, compares adjacent elements and swaps them if they are in the wrong order. The pass is repeated until the list is sorted.</p>
+    <div class="complexity">
+      <div class="complexity-item">Best <span>O(n)</span></div>
+      <div class="complexity-item">Average <span>O(n²)</span></div>
+      <div class="complexity-item">Worst <span>O(n²)</span></div>
+      <div class="complexity-item">Space <span>O(1)</span></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button id="btn-play">▶ play</button>
+    <button id="btn-pause" disabled>⏸ pause</button>
+    <button id="btn-reset">↺ reset</button>
+    <button id="btn-new">⟳ new array</button>
+    <span class="speed-label">speed</span>
+    <input type="range" id="speed" min="1" max="10" value="5" />
+  </div>
+
+  <div class="stats">
+    <div>comparisons: <span id="stat-comparisons">0</span></div>
+    <div>swaps: <span id="stat-swaps">0</span></div>
+    <div>status: <span id="stat-status">ready</span></div>
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#2a2a2a;border:1px solid #333"></div> unsorted</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--yellow)"></div> comparing</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div> swapping</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--accent)"></div> sorted</div>
+  </div>
+
+  <div class="viz">
+    <div id="bars-container"></div>
+  </div>
+
+  <script>
+    const N = 50;
+    let arr = [], states = [], running = false, paused = false;
+    let comparisons = 0, swaps = 0;
+
+    const container = document.getElementById('bars-container');
+    const btnPlay   = document.getElementById('btn-play');
+    const btnPause  = document.getElementById('btn-pause');
+    const btnReset  = document.getElementById('btn-reset');
+    const btnNew    = document.getElementById('btn-new');
+    const speedSlider = document.getElementById('speed');
+    const statComp  = document.getElementById('stat-comparisons');
+    const statSwaps = document.getElementById('stat-swaps');
+    const statStatus = document.getElementById('stat-status');
+
+    function getDelay() {
+      return Math.round(600 / parseInt(speedSlider.value));
+    }
+
+    function sleep(ms) {
+      return new Promise(r => setTimeout(r, ms));
+    }
+
+    async function waitIfPaused() {
+      while (paused) await sleep(50);
+    }
+
+    function generateArray() {
+      arr = Array.from({ length: N }, () => Math.floor(Math.random() * 90) + 10);
+      states = new Array(N).fill('default');
+      comparisons = 0; swaps = 0;
+      updateStats();
+      render();
+    }
+
+    function render() {
+      container.innerHTML = '';
+      const maxVal = Math.max(...arr);
+      arr.forEach((val, i) => {
+        const bar = document.createElement('div');
+        bar.className = `bar ${states[i]}`;
+        bar.style.height = `${(val / maxVal) * 240}px`;
+        container.appendChild(bar);
+      });
+    }
+
+    function updateStats() {
+      statComp.textContent = comparisons;
+      statSwaps.textContent = swaps;
+    }
+
+    async function bubbleSort() {
+      running = true; paused = false;
+      btnPlay.disabled = true; btnPause.disabled = false;
+      statStatus.textContent = 'sorting...';
+
+      const n = arr.length;
+      for (let i = 0; i < n - 1 && running; i++) {
+        for (let j = 0; j < n - i - 1 && running; j++) {
+          await waitIfPaused();
+
+          states[j] = 'comparing'; states[j + 1] = 'comparing';
+          comparisons++; updateStats(); render();
+          await sleep(getDelay());
+
+          if (arr[j] > arr[j + 1]) {
+            states[j] = 'swapping'; states[j + 1] = 'swapping';
+            render(); await sleep(getDelay());
+            [arr[j], arr[j + 1]] = [arr[j + 1], arr[j]];
+            swaps++; updateStats(); render();
+            await sleep(getDelay());
+          }
+
+          states[j] = 'default'; states[j + 1] = 'default';
+          render();
+        }
+        states[n - 1 - i] = 'sorted';
+        render();
+      }
+
+      if (running) {
+        states[0] = 'sorted'; render();
+        statStatus.textContent = 'done ✓';
+      }
+
+      running = false; paused = false;
+      btnPlay.disabled = false; btnPause.disabled = true;
+    }
+
+    btnPlay.addEventListener('click', () => {
+      if (!running) bubbleSort();
+    });
+
+    btnPause.addEventListener('click', () => {
+      paused = !paused;
+      btnPause.textContent = paused ? '▶ resume' : '⏸ pause';
+      statStatus.textContent = paused ? 'paused' : 'sorting...';
+    });
+
+    btnReset.addEventListener('click', () => {
+      running = false; paused = false;
+      btnPlay.disabled = false; btnPause.disabled = true;
+      btnPause.textContent = '⏸ pause';
+      statStatus.textContent = 'ready';
+      generateArray();
+    });
+
+    btnNew.addEventListener('click', () => {
+      running = false; paused = false;
+      btnPlay.disabled = false; btnPause.disabled = true;
+      btnPause.textContent = '⏸ pause';
+      statStatus.textContent = 'ready';
+      generateArray();
+    });
+
+    generateArray();
+  </script>
+</body>
+</html>
