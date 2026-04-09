@@ -1,2 +1,1 @@
-# mouhebgamdou.github.io
-Personal Website
+# Personal Website
